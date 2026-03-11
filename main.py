@@ -427,7 +427,7 @@ async def invite_registration_page(request: Request, token: str):
         raise HTTPException(status_code=404, detail="Invalid invite link")
     if invite.get("used"):
         raise HTTPException(status_code=410, detail="This invite has already been used")
-    if invite.get("expires_at") and invite["expires_at"] < datetime.now(timezone.utc):
+    if invite.get("expires_at") and invite["expires_at"].replace(tzinfo=None) < datetime.now(timezone.utc).replace(tzinfo=None):
         raise HTTPException(status_code=410, detail="This invite has expired")
 
     csrf = generate_csrf_token(token)
@@ -460,7 +460,7 @@ async def invite_register(
     invite = await db.invites.find_one({"token": token})
     if not invite or invite.get("used"):
         raise HTTPException(status_code=410, detail="Invalid or used invite")
-    if invite.get("expires_at") and invite["expires_at"] < datetime.now(timezone.utc):
+    if invite.get("expires_at") and invite["expires_at"].replace(tzinfo=None) < datetime.now(timezone.utc).replace(tzinfo=None):
         raise HTTPException(status_code=410, detail="Invite expired")
 
     name = name.strip()
