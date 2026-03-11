@@ -478,6 +478,20 @@ a:hover { text-decoration: underline; }
     gap: 1rem;
 }
 
+/* --- Upload / Invite form panels --- */
+.upload-form-panel {
+    background: var(--white);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+.upload-form-panel h2 {
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+    color: var(--grey-800);
+}
+
 /* --- Responsive --- */
 @media (max-width: 768px) {
     .container { padding: 1rem; }

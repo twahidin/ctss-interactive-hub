@@ -43,6 +43,31 @@ async function saveRow(btn) {
     }
 }
 
+// --- Dashboard: delete interactive ---
+async function deleteInteractive(btn) {
+    const row = btn.closest('tr');
+    const slug = row.dataset.slug;
+    const title = row.dataset.title || slug;
+    if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
+
+    try {
+        const res = await fetch('/admin/api/delete-interactive', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ slug }),
+        });
+        const json = await res.json();
+        if (json.ok) {
+            showToast('Deleted.');
+            row.remove();
+        } else {
+            showToast(json.error || 'Error deleting', 'error');
+        }
+    } catch (e) {
+        showToast('Network error', 'error');
+    }
+}
+
 // --- Dashboard: scan for new interactives ---
 async function scanInteractives() {
     try {
@@ -72,6 +97,48 @@ function filterTable() {
         const title = row.dataset.title || '';
         row.style.display = (subject.includes(query) || title.includes(query)) ? '' : 'none';
     });
+}
+
+// --- Dashboard: upload interactive ---
+function toggleUploadForm() {
+    const panel = document.getElementById('uploadPanel');
+    if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+async function uploadInteractive(e) {
+    e.preventDefault();
+    const title = document.getElementById('uploadTitle').value.trim();
+    const subject = document.getElementById('uploadSubject').value;
+    const description = document.getElementById('uploadDescription').value.trim();
+    const fileInput = document.getElementById('uploadFile');
+    const file = fileInput.files[0];
+
+    if (!file || !file.name.endsWith('.html')) {
+        showToast('Please select an HTML file', 'error');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('title', title);
+    formData.append('subject', subject);
+    formData.append('description', description);
+    formData.append('file', file);
+
+    try {
+        const res = await fetch('/admin/api/upload-interactive', {
+            method: 'POST',
+            body: formData,
+        });
+        const json = await res.json();
+        if (json.ok) {
+            showToast('Interactive uploaded!');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showToast(json.error || 'Upload failed', 'error');
+        }
+    } catch (e) {
+        showToast('Network error', 'error');
+    }
 }
 
 // --- Teacher Management ---
@@ -121,5 +188,47 @@ async function removeTeacher(email, name) {
         }
     } catch (e) {
         showToast('Network error', 'error');
+    }
+}
+
+// --- Invite Management ---
+function toggleInviteForm() {
+    const panel = document.getElementById('invitePanel');
+    if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+async function generateInvite() {
+    const emailHint = document.getElementById('inviteEmailHint')?.value.trim() || '';
+
+    try {
+        const res = await fetch('/admin/api/create-invite', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email_hint: emailHint }),
+        });
+        const json = await res.json();
+        if (json.ok) {
+            const link = `${window.location.origin}/join/${json.token}`;
+            const display = document.getElementById('inviteLinkDisplay');
+            const input = document.getElementById('inviteLinkInput');
+            if (display && input) {
+                input.value = link;
+                display.style.display = 'block';
+            }
+            const panel = document.getElementById('invitePanel');
+            if (panel) panel.style.display = 'none';
+            showToast('Invite link created!');
+        } else {
+            showToast(json.error || 'Failed to create invite', 'error');
+        }
+    } catch (e) {
+        showToast('Network error', 'error');
+    }
+}
+
+function copyInviteLink() {
+    const input = document.getElementById('inviteLinkInput');
+    if (input) {
+        navigator.clipboard.writeText(input.value).then(() => showToast('Link copied!'));
     }
 }

@@ -1,11 +1,15 @@
 import os
+import re
 import time
+import secrets
 import hashlib
+import unicodedata
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 
-from fastapi import FastAPI, Request, Form, HTTPException, Depends
+import aiofiles
+from fastapi import FastAPI, Request, Form, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -22,6 +26,7 @@ SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-me")
 ALGORITHM = "HS256"
 STUDENT_SESSION_HOURS = 2
 TEACHER_SESSION_HOURS = 8
+MAX_UPLOAD_SIZE = 2 * 1024 * 1024  # 2MB
 
 BASE_DIR = Path(__file__).resolve().parent
 INTERACTIVES_DIR = BASE_DIR / "interactives"
@@ -35,6 +40,16 @@ SUBJECT_COLOURS = {
     "Mathematics": "#4CAF50",
     "Economics": "#009688",
 }
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def slugify(text: str) -> str:
+    """Convert text to a URL-safe slug."""
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    text = re.sub(r"[^\w\s-]", "", text.lower())
+    return re.sub(r"[-\s]+", "-", text).strip("-")
+
 
 # ---------------------------------------------------------------------------
 # Rate limiter (in-memory)
@@ -94,6 +109,8 @@ async def scan_interactives():
                     "thumbnail": "",
                     "passcode": None,
                     "teacher": None,
+                    "uploaded_by": None,
+                    "uploaded_by_email": None,
                     "is_active": True,
                     "created_at": datetime.now(timezone.utc),
                     "updated_at": datetime.now(timezone.utc),
@@ -146,7 +163,6 @@ def generate_csrf_token(session_id: str = "") -> str:
 
 
 def verify_csrf_token(token: str, session_id: str = "") -> bool:
-    # Accept current hour and previous hour
     for offset in (0, -1):
         raw = f"{SECRET_KEY}:{session_id}:{int(time.time()) // 3600 + offset}"
         expected = hashlib.sha256(raw.encode()).hexdigest()[:32]
@@ -184,8 +200,6 @@ app.mount(
 )
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
-
-# Make helpers available in all templates
 templates.env.globals["subject_colours"] = SUBJECT_COLOURS
 
 
@@ -203,20 +217,6 @@ async def get_current_teacher(request: Request):
     return teacher
 
 
-async def require_teacher(request: Request):
-    teacher = await get_current_teacher(request)
-    if not teacher:
-        raise HTTPException(status_code=303, headers={"Location": "/admin"})
-    return teacher
-
-
-async def require_admin(request: Request):
-    teacher = await get_current_teacher(request)
-    if not teacher or teacher.get("role") != "admin":
-        raise HTTPException(status_code=303, headers={"Location": "/admin"})
-    return teacher
-
-
 # ---------------------------------------------------------------------------
 # PUBLIC ROUTES — Students
 # ---------------------------------------------------------------------------
@@ -225,11 +225,9 @@ async def student_home(request: Request):
     cursor = db.interactives.find({"is_active": True}).sort("subject", 1)
     interactives = await cursor.to_list(length=200)
 
-    # Group by subject
     grouped: dict[str, list] = {}
     for item in interactives:
-        subj = item["subject"]
-        grouped.setdefault(subj, []).append(item)
+        grouped.setdefault(item["subject"], []).append(item)
 
     return templates.TemplateResponse(
         "student_home.html",
@@ -244,18 +242,14 @@ async def passcode_gate(request: Request, subject: str, name: str):
     if not interactive:
         raise HTTPException(status_code=404, detail="Interactive not found")
 
-    # If no passcode, redirect directly to viewer
     if not interactive.get("passcode"):
         return RedirectResponse(url=f"/i/{subject}/{name}/view", status_code=303)
 
-    # Check if student already has valid session for this slug
     token = request.cookies.get(f"access_{slug.replace('/', '_')}")
     if token:
         payload = decode_token(token)
         if payload and payload.get("slug") == slug:
-            return RedirectResponse(
-                url=f"/i/{subject}/{name}/view", status_code=303
-            )
+            return RedirectResponse(url=f"/i/{subject}/{name}/view", status_code=303)
 
     csrf = generate_csrf_token(slug)
     return templates.TemplateResponse(
@@ -278,11 +272,9 @@ async def verify_passcode(
 ):
     slug = f"{subject}/{name}"
 
-    # CSRF check
     if not verify_csrf_token(csrf_token, slug):
         raise HTTPException(status_code=403, detail="Invalid request")
 
-    # Rate limit
     client_ip = request.client.host if request.client else "unknown"
     if not _check_rate_limit(f"passcode:{client_ip}"):
         interactive = await db.interactives.find_one({"slug": slug})
@@ -305,13 +297,8 @@ async def verify_passcode(
         raise HTTPException(status_code=404, detail="Interactive not found")
 
     if interactive.get("passcode") and passcode.strip() != interactive["passcode"]:
-        # Log failed attempt
         await db.access_logs.insert_one(
-            {
-                "interactive_slug": slug,
-                "timestamp": datetime.now(timezone.utc),
-                "success": False,
-            }
+            {"interactive_slug": slug, "timestamp": datetime.now(timezone.utc), "success": False}
         )
         csrf = generate_csrf_token(slug)
         return templates.TemplateResponse(
@@ -327,21 +314,14 @@ async def verify_passcode(
             },
         )
 
-    # Log success
     await db.access_logs.insert_one(
-        {
-            "interactive_slug": slug,
-            "timestamp": datetime.now(timezone.utc),
-            "success": True,
-        }
+        {"interactive_slug": slug, "timestamp": datetime.now(timezone.utc), "success": True}
     )
 
-    # Set session cookie
     token = create_token({"slug": slug, "type": "student"}, STUDENT_SESSION_HOURS)
     response = RedirectResponse(url=f"/i/{subject}/{name}/view", status_code=303)
-    cookie_name = f"access_{slug.replace('/', '_')}"
     response.set_cookie(
-        key=cookie_name,
+        key=f"access_{slug.replace('/', '_')}",
         value=token,
         httponly=True,
         max_age=STUDENT_SESSION_HOURS * 3600,
@@ -357,17 +337,14 @@ async def interactive_viewer(request: Request, subject: str, name: str):
     if not interactive:
         raise HTTPException(status_code=404, detail="Interactive not found")
 
-    # Check access: either no passcode or valid session
     if interactive.get("passcode"):
-        cookie_name = f"access_{slug.replace('/', '_')}"
-        token = request.cookies.get(cookie_name)
+        token = request.cookies.get(f"access_{slug.replace('/', '_')}")
         if not token:
             return RedirectResponse(url=f"/i/{subject}/{name}", status_code=303)
         payload = decode_token(token)
         if not payload or payload.get("slug") != slug:
             return RedirectResponse(url=f"/i/{subject}/{name}", status_code=303)
 
-    # Check the HTML file exists
     html_path = INTERACTIVES_DIR / f"{slug}.html"
     if not html_path.exists():
         raise HTTPException(status_code=404, detail="Interactive file not found")
@@ -386,11 +363,134 @@ async def interactive_viewer(request: Request, subject: str, name: str):
 
 
 # ---------------------------------------------------------------------------
+# PUBLIC — Teacher pages
+# ---------------------------------------------------------------------------
+@app.get("/t/{teacher_slug}", response_class=HTMLResponse)
+async def teacher_page(request: Request, teacher_slug: str):
+    teachers_list = await db.teachers.find().to_list(length=100)
+    page_teacher = None
+    for t in teachers_list:
+        if slugify(t["name"]) == teacher_slug:
+            page_teacher = t
+            break
+
+    if not page_teacher:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+
+    cursor = db.interactives.find(
+        {"uploaded_by": page_teacher["name"], "is_active": True}
+    ).sort("subject", 1)
+    interactives = await cursor.to_list(length=200)
+
+    grouped: dict[str, list] = {}
+    for item in interactives:
+        grouped.setdefault(item["subject"], []).append(item)
+
+    return templates.TemplateResponse(
+        "teacher_page.html",
+        {
+            "request": request,
+            "page_teacher": page_teacher,
+            "grouped": grouped,
+            "subject_colours": SUBJECT_COLOURS,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# PUBLIC — Invite registration
+# ---------------------------------------------------------------------------
+@app.get("/join/{token}", response_class=HTMLResponse)
+async def invite_registration_page(request: Request, token: str):
+    invite = await db.invites.find_one({"token": token})
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invalid invite link")
+    if invite.get("used"):
+        raise HTTPException(status_code=410, detail="This invite has already been used")
+    if invite.get("expires_at") and invite["expires_at"] < datetime.now(timezone.utc):
+        raise HTTPException(status_code=410, detail="This invite has expired")
+
+    csrf = generate_csrf_token(token)
+    return templates.TemplateResponse(
+        "invite_register.html",
+        {
+            "request": request,
+            "token": token,
+            "email_hint": invite.get("email_hint", ""),
+            "error": None,
+            "csrf_token": csrf,
+            "subject_colours": SUBJECT_COLOURS,
+        },
+    )
+
+
+@app.post("/join/{token}/register", response_class=HTMLResponse)
+async def invite_register(
+    request: Request,
+    token: str,
+    name: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    subjects: str = Form(""),
+    csrf_token: str = Form(""),
+):
+    if not verify_csrf_token(csrf_token, token):
+        raise HTTPException(status_code=403, detail="Invalid request")
+
+    invite = await db.invites.find_one({"token": token})
+    if not invite or invite.get("used"):
+        raise HTTPException(status_code=410, detail="Invalid or used invite")
+    if invite.get("expires_at") and invite["expires_at"] < datetime.now(timezone.utc):
+        raise HTTPException(status_code=410, detail="Invite expired")
+
+    name = name.strip()
+    email = email.strip()
+
+    if not name or not email or not password:
+        csrf = generate_csrf_token(token)
+        return templates.TemplateResponse("invite_register.html", {
+            "request": request, "token": token,
+            "email_hint": invite.get("email_hint", ""),
+            "error": "All fields are required.",
+            "csrf_token": csrf, "subject_colours": SUBJECT_COLOURS,
+        })
+
+    existing = await db.teachers.find_one({"$or": [{"name": name}, {"email": email}]})
+    if existing:
+        csrf = generate_csrf_token(token)
+        return templates.TemplateResponse("invite_register.html", {
+            "request": request, "token": token,
+            "email_hint": invite.get("email_hint", ""),
+            "error": "A teacher with that name or email already exists.",
+            "csrf_token": csrf, "subject_colours": SUBJECT_COLOURS,
+        })
+
+    subject_list = [s.strip() for s in subjects.split(",") if s.strip()]
+
+    pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    await db.teachers.insert_one({
+        "name": name, "email": email, "password_hash": pw_hash,
+        "role": "teacher", "subjects": subject_list,
+        "created_at": datetime.now(timezone.utc),
+        "invited_by": invite["created_by"],
+    })
+
+    await db.invites.update_one(
+        {"token": token},
+        {"$set": {"used": True, "used_by": name, "used_by_email": email, "used_at": datetime.now(timezone.utc)}},
+    )
+
+    jwt_token = create_token({"name": name, "role": "teacher", "type": "teacher"}, TEACHER_SESSION_HOURS)
+    response = RedirectResponse(url="/admin/dashboard", status_code=303)
+    response.set_cookie(key="teacher_session", value=jwt_token, httponly=True, max_age=TEACHER_SESSION_HOURS * 3600, samesite="lax")
+    return response
+
+
+# ---------------------------------------------------------------------------
 # ADMIN ROUTES — Teachers
 # ---------------------------------------------------------------------------
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_login_page(request: Request):
-    # If already logged in, redirect to dashboard
     teacher = await get_current_teacher(request)
     if teacher:
         return RedirectResponse(url="/admin/dashboard", status_code=303)
@@ -418,9 +518,7 @@ async def admin_login(request: Request, name: str = Form(...), password: str = F
         )
 
     teacher = await db.teachers.find_one({"name": name})
-    if not teacher or not bcrypt.checkpw(
-        password.encode(), teacher["password_hash"].encode()
-    ):
+    if not teacher or not bcrypt.checkpw(password.encode(), teacher["password_hash"].encode()):
         teacher_names = await db.teachers.distinct("name")
         csrf = generate_csrf_token("admin-login")
         return templates.TemplateResponse(
@@ -433,13 +531,7 @@ async def admin_login(request: Request, name: str = Form(...), password: str = F
         TEACHER_SESSION_HOURS,
     )
     response = RedirectResponse(url="/admin/dashboard", status_code=303)
-    response.set_cookie(
-        key="teacher_session",
-        value=token,
-        httponly=True,
-        max_age=TEACHER_SESSION_HOURS * 3600,
-        samesite="lax",
-    )
+    response.set_cookie(key="teacher_session", value=token, httponly=True, max_age=TEACHER_SESSION_HOURS * 3600, samesite="lax")
     return response
 
 
@@ -449,7 +541,13 @@ async def admin_dashboard(request: Request):
     if not teacher:
         return RedirectResponse(url="/admin", status_code=303)
 
-    cursor = db.interactives.find().sort([("subject", 1), ("title", 1)])
+    # Admin sees all, teachers see only their own
+    if teacher.get("role") == "admin":
+        query = {}
+    else:
+        query = {"uploaded_by": teacher["name"]}
+
+    cursor = db.interactives.find(query).sort([("subject", 1), ("title", 1)])
     interactives = await cursor.to_list(length=200)
 
     csrf = generate_csrf_token(teacher["name"])
@@ -461,6 +559,7 @@ async def admin_dashboard(request: Request):
             "interactives": interactives,
             "subject_colours": SUBJECT_COLOURS,
             "csrf_token": csrf,
+            "teacher_slug": slugify(teacher["name"]),
         },
     )
 
@@ -476,29 +575,117 @@ async def api_update_interactive(request: Request):
     if not slug:
         return JSONResponse({"error": "Missing slug"}, status_code=400)
 
+    # Ownership check
+    if teacher.get("role") != "admin":
+        interactive = await db.interactives.find_one({"slug": slug})
+        if not interactive or interactive.get("uploaded_by") != teacher["name"]:
+            return JSONResponse({"error": "Not authorized"}, status_code=403)
+
     update_fields: dict = {"updated_at": datetime.now(timezone.utc)}
 
     if "passcode" in data:
         passcode_val = data["passcode"].strip() if data["passcode"] else None
         update_fields["passcode"] = passcode_val
         update_fields["teacher"] = teacher["name"] if passcode_val else None
-
     if "is_active" in data:
         update_fields["is_active"] = bool(data["is_active"])
-
     if "title" in data:
         update_fields["title"] = data["title"].strip()
-
     if "description" in data:
         update_fields["description"] = data["description"].strip()
 
-    result = await db.interactives.update_one(
-        {"slug": slug}, {"$set": update_fields}
-    )
+    result = await db.interactives.update_one({"slug": slug}, {"$set": update_fields})
     if result.matched_count == 0:
         return JSONResponse({"error": "Not found"}, status_code=404)
 
     return JSONResponse({"ok": True})
+
+
+@app.post("/admin/api/delete-interactive")
+async def api_delete_interactive(request: Request):
+    teacher = await get_current_teacher(request)
+    if not teacher:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    data = await request.json()
+    slug = data.get("slug")
+    if not slug:
+        return JSONResponse({"error": "Missing slug"}, status_code=400)
+
+    interactive = await db.interactives.find_one({"slug": slug})
+    if not interactive:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+
+    if teacher.get("role") != "admin" and interactive.get("uploaded_by") != teacher["name"]:
+        return JSONResponse({"error": "Not authorized"}, status_code=403)
+
+    html_path = INTERACTIVES_DIR / f"{slug}.html"
+    if html_path.exists():
+        html_path.unlink()
+
+    await db.interactives.delete_one({"slug": slug})
+    return JSONResponse({"ok": True})
+
+
+@app.post("/admin/api/upload-interactive")
+async def api_upload_interactive(
+    request: Request,
+    title: str = Form(...),
+    subject: str = Form(...),
+    description: str = Form(""),
+    file: UploadFile = File(...),
+):
+    teacher = await get_current_teacher(request)
+    if not teacher:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    if subject not in SUBJECT_COLOURS:
+        return JSONResponse({"error": f"Invalid subject. Choose from: {', '.join(SUBJECT_COLOURS.keys())}"}, status_code=400)
+
+    if not file.filename or not file.filename.lower().endswith(".html"):
+        return JSONResponse({"error": "Only .html files are allowed"}, status_code=400)
+
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_SIZE:
+        return JSONResponse({"error": "File too large (max 2MB)"}, status_code=400)
+
+    if not title.strip():
+        return JSONResponse({"error": "Title is required"}, status_code=400)
+
+    subject_folder = slugify(subject)
+    title_slug = slugify(title.strip())
+    if not title_slug:
+        return JSONResponse({"error": "Invalid title"}, status_code=400)
+
+    slug = f"{subject_folder}/{title_slug}"
+
+    existing = await db.interactives.find_one({"slug": slug})
+    if existing:
+        return JSONResponse({"error": f"An interactive with this title already exists in {subject}. Choose a different title."}, status_code=409)
+
+    subject_dir = INTERACTIVES_DIR / subject_folder
+    subject_dir.mkdir(parents=True, exist_ok=True)
+
+    file_path = subject_dir / f"{title_slug}.html"
+    async with aiofiles.open(str(file_path), "wb") as f:
+        await f.write(content)
+
+    await db.interactives.insert_one({
+        "slug": slug,
+        "title": title.strip(),
+        "subject": subject,
+        "description": description.strip(),
+        "thumbnail": "",
+        "passcode": None,
+        "teacher": None,
+        "uploaded_by": teacher["name"],
+        "uploaded_by_email": teacher.get("email"),
+        "is_active": True,
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+    })
+
+    return JSONResponse({"ok": True, "slug": slug})
 
 
 @app.post("/admin/api/scan")
@@ -506,7 +693,6 @@ async def api_scan(request: Request):
     teacher = await get_current_teacher(request)
     if not teacher:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
-
     count = await scan_interactives()
     return JSONResponse({"ok": True, "new_count": count})
 
@@ -519,7 +705,7 @@ async def admin_logout():
 
 
 # ---------------------------------------------------------------------------
-# ADMIN-ONLY ROUTES — Teacher management
+# ADMIN-ONLY — Teacher management
 # ---------------------------------------------------------------------------
 @app.get("/admin/teachers", response_class=HTMLResponse)
 async def admin_teachers_page(request: Request):
@@ -531,12 +717,7 @@ async def admin_teachers_page(request: Request):
     csrf = generate_csrf_token(teacher["name"])
     return templates.TemplateResponse(
         "admin_teachers.html",
-        {
-            "request": request,
-            "teacher": teacher,
-            "teachers": teachers_list,
-            "csrf_token": csrf,
-        },
+        {"request": request, "teacher": teacher, "teachers": teachers_list, "csrf_token": csrf},
     )
 
 
@@ -561,16 +742,11 @@ async def api_add_teacher(request: Request):
         return JSONResponse({"error": "A teacher with that name or email already exists"}, status_code=409)
 
     pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-    await db.teachers.insert_one(
-        {
-            "name": name,
-            "email": email,
-            "password_hash": pw_hash,
-            "role": role if role in ("admin", "teacher") else "teacher",
-            "subjects": subjects,
-            "created_at": datetime.now(timezone.utc),
-        }
-    )
+    await db.teachers.insert_one({
+        "name": name, "email": email, "password_hash": pw_hash,
+        "role": role if role in ("admin", "teacher") else "teacher",
+        "subjects": subjects, "created_at": datetime.now(timezone.utc),
+    })
     return JSONResponse({"ok": True})
 
 
@@ -585,12 +761,58 @@ async def api_remove_teacher(request: Request):
     if not email:
         return JSONResponse({"error": "Email required"}, status_code=400)
 
-    # Don't allow removing yourself
     if email == teacher.get("email"):
         return JSONResponse({"error": "Cannot remove your own account"}, status_code=400)
 
     result = await db.teachers.delete_one({"email": email})
     if result.deleted_count == 0:
         return JSONResponse({"error": "Teacher not found"}, status_code=404)
-
     return JSONResponse({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# ADMIN-ONLY — Invite management
+# ---------------------------------------------------------------------------
+@app.get("/admin/invites", response_class=HTMLResponse)
+async def admin_invites_page(request: Request):
+    teacher = await get_current_teacher(request)
+    if not teacher or teacher.get("role") != "admin":
+        return RedirectResponse(url="/admin", status_code=303)
+
+    invites_list = await db.invites.find().sort("created_at", -1).to_list(length=100)
+    csrf = generate_csrf_token(teacher["name"])
+    return templates.TemplateResponse(
+        "admin_invites.html",
+        {
+            "request": request, "teacher": teacher,
+            "invites": invites_list, "csrf_token": csrf,
+            "now": datetime.now(timezone.utc),
+        },
+    )
+
+
+@app.post("/admin/api/create-invite")
+async def api_create_invite(request: Request):
+    teacher = await get_current_teacher(request)
+    if not teacher or teacher.get("role") != "admin":
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    data = await request.json()
+    email_hint = data.get("email_hint", "").strip() or None
+    token = secrets.token_hex(16)
+    now = datetime.now(timezone.utc)
+
+    await db.invites.insert_one({
+        "token": token,
+        "created_by": teacher["name"],
+        "created_by_email": teacher.get("email"),
+        "created_at": now,
+        "expires_at": now + timedelta(days=7),
+        "email_hint": email_hint,
+        "used": False,
+        "used_by": None,
+        "used_by_email": None,
+        "used_at": None,
+    })
+
+    return JSONResponse({"ok": True, "token": token})

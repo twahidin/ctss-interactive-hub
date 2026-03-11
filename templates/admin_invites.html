@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}Invite Links — CTSS Interactive Hub{% endblock %}
+
+{% block nav_right %}
+<div class="nav-right">
+    <a href="/admin/dashboard">Dashboard</a>
+    <a href="/admin/teachers">Teachers</a>
+    <a href="/admin/logout">Logout</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="dash-header">
+    <h1>Invite Links</h1>
+    <div class="dash-actions">
+        <button class="btn btn-primary btn-sm" onclick="toggleInviteForm()">Generate Invite Link</button>
+    </div>
+</div>
+
+<div class="upload-form-panel" id="invitePanel" style="display:none;">
+    <h2>Create Invite</h2>
+    <div class="form-group">
+        <label class="form-label">Email hint (optional — pre-fills their email)</label>
+        <input type="email" class="form-input" id="inviteEmailHint" placeholder="jane@ctss.edu.sg" style="max-width:350px;">
+    </div>
+    <div style="display:flex; gap:0.5rem;">
+        <button class="btn btn-primary" onclick="generateInvite()">Generate</button>
+        <button class="btn btn-secondary" onclick="toggleInviteForm()">Cancel</button>
+    </div>
+</div>
+
+<div class="upload-form-panel" id="inviteLinkDisplay" style="display:none;">
+    <p style="font-weight:600; margin-bottom:0.5rem;">Invite link created! Share it with the teacher:</p>
+    <input type="text" class="form-input" id="inviteLinkInput" readonly onclick="this.select()" style="max-width:500px; font-family:monospace; font-size:0.88rem;">
+    <button class="btn btn-primary btn-sm" style="margin-top:0.5rem;" onclick="copyInviteLink()">Copy Link</button>
+</div>
+
+<div class="teachers-table" style="margin-top:1.5rem;">
+    <table>
+        <thead>
+            <tr>
+                <th>Created</th>
+                <th>Email Hint</th>
+                <th>Status</th>
+                <th>Registered As</th>
+                <th>Link</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for inv in invites %}
+            <tr>
+                <td>{{ inv.created_at.strftime('%d %b %Y') }}</td>
+                <td>{{ inv.email_hint or '—' }}</td>
+                <td>
+                    {% if inv.used %}
+                    <span class="subject-tag" style="background:var(--success)">Used</span>
+                    {% elif inv.expires_at and inv.expires_at < now %}
+                    <span class="subject-tag" style="background:var(--grey-500)">Expired</span>
+                    {% else %}
+                    <span class="subject-tag" style="background:var(--warning)">Pending</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if inv.used_by %}
+                    {{ inv.used_by }} ({{ inv.used_by_email or '' }})
+                    {% else %}
+                    —
+                    {% endif %}
+                </td>
+                <td>
+                    {% if not inv.used and (not inv.expires_at or inv.expires_at >= now) %}
+                    <code style="font-size:0.78rem; color:var(--grey-600);">/join/{{ inv.token[:12] }}...</code>
+                    {% else %}
+                    —
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if not invites %}
+<p style="text-align:center; color:var(--grey-500); margin-top:2rem;">
+    No invites yet. Click "Generate Invite Link" to invite a teacher.
+</p>
+{% endif %}
+
+<div class="toast-container" id="toastContainer"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/admin.js"></script>
+{% endblock %}

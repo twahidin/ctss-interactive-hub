@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Join CTSS Interactive Hub{% endblock %}
+
+{% block content %}
+<div class="login-wrapper">
+    <div class="login-card" style="max-width:440px;">
+        <h1>Join CTSS Interactive Hub</h1>
+        <p style="text-align:center; color:var(--grey-600); font-size:0.9rem; margin-bottom:1.5rem;">
+            You've been invited to join as a teacher. Fill in your details below.
+        </p>
+
+        {% if error %}
+        <div class="login-error">{{ error }}</div>
+        {% endif %}
+
+        <form method="post" action="/join/{{ token }}/register">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="form-group">
+                <label class="form-label">Name</label>
+                <input type="text" name="name" class="form-input" required placeholder="e.g. Ms Jane">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Email</label>
+                <input type="email" name="email" class="form-input" required
+                       value="{{ email_hint or '' }}" placeholder="jane@ctss.edu.sg">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Password</label>
+                <input type="password" name="password" class="form-input" required minlength="8">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Subjects (comma-separated, optional)</label>
+                <input type="text" name="subjects" class="form-input" placeholder="e.g. Computing, Physics">
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%">Create Account</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block main_class %}{% endblock %}

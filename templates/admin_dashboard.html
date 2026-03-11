@@ -5,7 +5,8 @@
 {% block nav_right %}
 <div class="nav-right">
     {% if teacher.role == "admin" %}
-    <a href="/admin/teachers">Manage Teachers</a>
+    <a href="/admin/invites">Invites</a>
+    <a href="/admin/teachers">Teachers</a>
     {% endif %}
     <a href="/admin/logout">Logout</a>
 </div>
@@ -15,8 +16,45 @@
 <div class="dash-header">
     <h1>Welcome, {{ teacher.name }}</h1>
     <div class="dash-actions">
-        <button class="btn btn-outline btn-sm" onclick="scanInteractives()">Scan for New Interactives</button>
+        <a href="/t/{{ teacher_slug }}" class="btn btn-outline btn-sm" target="_blank">My Public Page</a>
+        <button class="btn btn-primary btn-sm" onclick="toggleUploadForm()">Upload Interactive</button>
+        {% if teacher.role == "admin" %}
+        <button class="btn btn-outline btn-sm" onclick="scanInteractives()">Scan for New</button>
+        {% endif %}
     </div>
+</div>
+
+<div class="upload-form-panel" id="uploadPanel" style="display:none;">
+    <h2>Upload Interactive</h2>
+    <form onsubmit="uploadInteractive(event)">
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Title</label>
+                <input type="text" class="form-input" id="uploadTitle" required placeholder="e.g. Newton's Laws Simulator">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Subject</label>
+                <select class="form-select" id="uploadSubject" required>
+                    <option value="">Select subject</option>
+                    {% for subj in subject_colours.keys() %}
+                    <option value="{{ subj }}">{{ subj }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Description (optional)</label>
+            <input type="text" class="form-input" id="uploadDescription" placeholder="Brief description for students">
+        </div>
+        <div class="form-group">
+            <label class="form-label">HTML File</label>
+            <input type="file" class="form-input" id="uploadFile" accept=".html" required>
+        </div>
+        <div style="display:flex; gap:0.5rem;">
+            <button type="submit" class="btn btn-primary">Upload</button>
+            <button type="button" class="btn btn-secondary" onclick="toggleUploadForm()">Cancel</button>
+        </div>
+    </form>
 </div>
 
 <div class="dash-search">
@@ -56,14 +94,21 @@
                         <span class="toggle-slider"></span>
                     </label>
                 </td>
-                <td>
+                <td style="display:flex; gap:0.3rem;">
                     <button class="btn btn-primary btn-sm" onclick="saveRow(this)">Save</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteInteractive(this)">Delete</button>
                 </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
+
+{% if not interactives %}
+<p style="text-align:center; color:var(--grey-500); margin-top:2rem;">
+    No interactives yet. Click "Upload Interactive" to add your first one!
+</p>
+{% endif %}
 
 <div class="toast-container" id="toastContainer"></div>
 {% endblock %}
