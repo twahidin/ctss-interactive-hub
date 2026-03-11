@@ -127,8 +127,8 @@ async def ensure_default_admin():
         pw_hash = bcrypt.hashpw("changeme123".encode(), bcrypt.gensalt()).decode()
         await db.teachers.insert_one(
             {
-                "name": "Mr Joe",
-                "email": "joe@ctss.edu.sg",
+                "name": "Administrator",
+                "email": "joe_tay@moe.edu.sg",
                 "password_hash": pw_hash,
                 "role": "admin",
                 "subjects": ["Computing", "Economics", "Chemistry"],
@@ -179,6 +179,14 @@ async def lifespan(app: FastAPI):
     global db_client, db
     db_client = AsyncIOMotorClient(MONGODB_URI)
     db = db_client.ctss_hub
+    # Migrate old "Mr Joe" admin to "Administrator"
+    old_admin = await db.teachers.find_one({"name": "Mr Joe", "email": "joe@ctss.edu.sg"})
+    if old_admin:
+        await db.teachers.update_one(
+            {"_id": old_admin["_id"]},
+            {"$set": {"name": "Administrator", "email": "joe_tay@moe.edu.sg"}},
+        )
+        print("Migrated admin: Mr Joe -> Administrator (joe_tay@moe.edu.sg)")
     await ensure_default_admin()
     n = await scan_interactives()
     if n:
