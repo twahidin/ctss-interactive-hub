@@ -33,12 +33,24 @@ INTERACTIVES_DIR = BASE_DIR / "interactives"
 
 # Subject colour map
 SUBJECT_COLOURS = {
-    "Computing": "#2196F3",
+    "English": "#1565C0",
+    "Mathematics": "#4CAF50",
+    "Additional Mathematics": "#2E7D32",
     "Physics": "#FF9800",
     "Chemistry": "#9C27B0",
     "Biology": "#F44336",
-    "Mathematics": "#4CAF50",
+    "Computing": "#2196F3",
+    "History": "#795548",
+    "Geography": "#00897B",
     "Economics": "#009688",
+    "Literature": "#AD1457",
+    "Art": "#E91E63",
+    "Music": "#7B1FA2",
+    "Drama": "#D81B60",
+    "Design & Technology": "#FF6F00",
+    "Principles of Accounts": "#546E7A",
+    "Nutrition and Food Science": "#8D6E63",
+    "Exercise and Sports Science": "#EF6C00",
 }
 
 # ---------------------------------------------------------------------------
