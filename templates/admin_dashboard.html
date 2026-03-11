@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — CTSS Interactive Hub{% endblock %}
+
+{% block nav_right %}
+<div class="nav-right">
+    {% if teacher.role == "admin" %}
+    <a href="/admin/teachers">Manage Teachers</a>
+    {% endif %}
+    <a href="/admin/logout">Logout</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="dash-header">
+    <h1>Welcome, {{ teacher.name }}</h1>
+    <div class="dash-actions">
+        <button class="btn btn-outline btn-sm" onclick="scanInteractives()">Scan for New Interactives</button>
+    </div>
+</div>
+
+<div class="dash-search">
+    <input type="text" class="form-input" id="searchInput" placeholder="Search by title or subject..." oninput="filterTable()">
+</div>
+
+<div class="dash-table">
+    <table>
+        <thead>
+            <tr>
+                <th>Subject</th>
+                <th>Title</th>
+                <th>Passcode</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="interactivesBody">
+            {% for item in interactives %}
+            <tr data-slug="{{ item.slug }}" data-subject="{{ item.subject|lower }}" data-title="{{ item.title|lower }}">
+                <td>
+                    <span class="subject-tag" style="background:{{ subject_colours.get(item.subject, '#607D8B') }}">{{ item.subject }}</span>
+                </td>
+                <td><strong>{{ item.title }}</strong></td>
+                <td>
+                    <input
+                        type="text"
+                        class="passcode-input"
+                        value="{{ item.passcode or '' }}"
+                        placeholder="Open Access"
+                        data-field="passcode"
+                    >
+                </td>
+                <td>
+                    <label class="toggle">
+                        <input type="checkbox" data-field="is_active" {% if item.is_active %}checked{% endif %}>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </td>
+                <td>
+                    <button class="btn btn-primary btn-sm" onclick="saveRow(this)">Save</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/admin.js"></script>
+{% endblock %}

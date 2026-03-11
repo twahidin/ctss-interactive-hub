@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}CTSS Interactive Hub{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <h1>CTSS Interactive Hub</h1>
+    <p>Explore interactive tools for your subjects. Click on any card to get started.</p>
+</div>
+
+{% if not grouped %}
+<p style="text-align:center; color:var(--grey-500); margin-top:2rem;">No interactives available yet. Check back soon!</p>
+{% endif %}
+
+{% for subject, items in grouped.items() %}
+<section class="subject-section">
+    <h2>
+        <span class="subject-dot" style="background:{{ subject_colours.get(subject, '#607D8B') }}"></span>
+        {{ subject }}
+    </h2>
+    <div class="interactive-grid">
+        {% for item in items %}
+        <a href="/i/{{ item.slug }}" class="interactive-card card">
+            <div class="card-body">
+                <div>
+                    <span class="subject-tag" style="background:{{ subject_colours.get(item.subject, '#607D8B') }}">{{ item.subject }}</span>
+                </div>
+                <div class="card-title">
+                    <span>{{ item.title }}</span>
+                    {% if item.passcode %}
+                    <span class="lock-icon locked" title="Passcode required">&#128274;</span>
+                    {% else %}
+                    <span class="lock-icon" title="Open access">&#128275;</span>
+                    {% endif %}
+                </div>
+                {% if item.description %}
+                <div class="card-desc">{{ item.description }}</div>
+                {% endif %}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endfor %}
+{% endblock %}

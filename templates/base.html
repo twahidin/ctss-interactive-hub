@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}CTSS Interactive Hub{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    {% block head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+    {% block nav %}
+    <nav class="navbar">
+        <a href="/" class="nav-brand">
+            <svg class="nav-logo" viewBox="0 0 32 32" width="28" height="28">
+                <rect width="32" height="32" rx="6" fill="#1565C0"/>
+                <text x="16" y="22" text-anchor="middle" fill="white" font-size="16" font-weight="bold" font-family="system-ui">C</text>
+            </svg>
+            <span>CTSS Interactive Hub</span>
+        </a>
+        {% block nav_right %}{% endblock %}
+    </nav>
+    {% endblock %}
+
+    <main class="{% block main_class %}container{% endblock %}">
+        {% block content %}{% endblock %}
+    </main>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

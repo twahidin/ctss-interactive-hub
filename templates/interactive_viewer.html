@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}{{ interactive.title }}{% endblock %}
+
+{% block nav %}{% endblock %}
+
+{% block content %}
+<div class="viewer-bar">
+    <div class="viewer-title">
+        <span class="subject-tag" style="background:{{ subject_colours.get(interactive.subject, '#607D8B') }}">{{ interactive.subject }}</span>
+        <span>{{ interactive.title }}</span>
+    </div>
+    <a href="/" class="btn btn-secondary btn-sm">Back to Hub</a>
+</div>
+<iframe
+    src="{{ iframe_src }}"
+    class="viewer-frame"
+    sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+    title="{{ interactive.title }}"
+></iframe>
+{% endblock %}
+
+{% block main_class %}{% endblock %}

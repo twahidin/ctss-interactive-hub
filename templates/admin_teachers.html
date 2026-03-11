@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Teachers — CTSS Interactive Hub{% endblock %}
+
+{% block nav_right %}
+<div class="nav-right">
+    <a href="/admin/dashboard">Dashboard</a>
+    <a href="/admin/logout">Logout</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="dash-header">
+    <h1>Manage Teachers</h1>
+</div>
+
+<div class="teachers-table">
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Subjects</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="teachersBody">
+            {% for t in teachers %}
+            <tr data-email="{{ t.email }}">
+                <td><strong>{{ t.name }}</strong></td>
+                <td>{{ t.email }}</td>
+                <td><span class="subject-tag" style="background:{% if t.role == 'admin' %}var(--blue-600){% else %}var(--grey-500){% endif %}">{{ t.role }}</span></td>
+                <td>{{ t.subjects | join(', ') if t.subjects else '—' }}</td>
+                <td>
+                    {% if t.email != teacher.email %}
+                    <button class="btn btn-danger btn-sm" onclick="removeTeacher('{{ t.email }}', '{{ t.name }}')">Remove</button>
+                    {% else %}
+                    <span style="color:var(--grey-400); font-size:0.82rem;">You</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="add-teacher-form">
+    <h2>Add Teacher</h2>
+    <form onsubmit="addTeacher(event)">
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Name</label>
+                <input type="text" class="form-input" id="newName" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Email</label>
+                <input type="email" class="form-input" id="newEmail" required>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label class="form-label">Password</label>
+                <input type="password" class="form-input" id="newPassword" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Role</label>
+                <select class="form-select" id="newRole">
+                    <option value="teacher">Teacher</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Subjects (comma-separated)</label>
+            <input type="text" class="form-input" id="newSubjects" placeholder="e.g. Computing, Physics">
+        </div>
+        <button type="submit" class="btn btn-primary">Add Teacher</button>
+    </form>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/admin.js"></script>
+{% endblock %}

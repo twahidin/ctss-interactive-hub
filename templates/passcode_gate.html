@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}{{ interactive.title }} — Enter Passcode{% endblock %}
+
+{% block content %}
+<div class="gate-wrapper">
+    <div class="gate-card {% if error %}shake{% endif %}">
+        <h1>{{ interactive.title }}</h1>
+        <div class="gate-subject">
+            <span class="subject-tag" style="background:{{ subject_colours.get(interactive.subject, '#607D8B') }}">{{ interactive.subject }}</span>
+        </div>
+
+        <p style="color:var(--grey-600); font-size:0.9rem; margin-bottom:1.2rem;">
+            Enter the passcode provided by your teacher to access this interactive.
+        </p>
+
+        <form method="post" action="/i/{{ subject }}/{{ name }}/verify" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="form-group">
+                <input
+                    type="text"
+                    name="passcode"
+                    class="form-input"
+                    placeholder="Passcode"
+                    autofocus
+                    required
+                    autocomplete="off"
+                >
+            </div>
+            <button type="submit" class="btn btn-primary">Enter</button>
+        </form>
+
+        {% if error %}
+        <p class="gate-error">{{ error }}</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block main_class %}{% endblock %}
