@@ -801,6 +801,34 @@ async def api_remove_teacher(request: Request):
     return JSONResponse({"ok": True})
 
 
+@app.post("/admin/api/change-password")
+async def api_change_password(request: Request):
+    teacher = await get_current_teacher(request)
+    if not teacher:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    data = await request.json()
+    current_password = data.get("current_password", "").strip()
+    new_password = data.get("new_password", "").strip()
+    confirm_password = data.get("confirm_password", "").strip()
+
+    if not current_password or not new_password or not confirm_password:
+        return JSONResponse({"error": "All fields are required"}, status_code=400)
+    if new_password != confirm_password:
+        return JSONResponse({"error": "New passwords do not match"}, status_code=400)
+    if len(new_password) < 8:
+        return JSONResponse({"error": "Password must be at least 8 characters"}, status_code=400)
+    if not bcrypt.checkpw(current_password.encode(), teacher["password_hash"].encode()):
+        return JSONResponse({"error": "Current password is incorrect"}, status_code=401)
+
+    new_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+    await db.teachers.update_one(
+        {"email": teacher["email"]},
+        {"$set": {"password_hash": new_hash, "updated_at": datetime.now(timezone.utc)}},
+    )
+    return JSONResponse({"ok": True})
+
+
 # ---------------------------------------------------------------------------
 # ADMIN-ONLY — Invite management
 # ---------------------------------------------------------------------------

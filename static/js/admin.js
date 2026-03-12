@@ -141,6 +141,48 @@ async function uploadInteractive(e) {
     }
 }
 
+// --- Change Password ---
+function togglePasswordForm() {
+    const panel = document.getElementById('passwordPanel');
+    if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+async function changePassword(e) {
+    e.preventDefault();
+    const currentPassword = document.getElementById('currentPassword').value;
+    const newPassword = document.getElementById('newPasswordInput').value;
+    const confirmPassword = document.getElementById('confirmPasswordInput').value;
+
+    if (newPassword !== confirmPassword) {
+        showToast('New passwords do not match', 'error');
+        return;
+    }
+
+    try {
+        const res = await fetch('/admin/api/change-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                current_password: currentPassword,
+                new_password: newPassword,
+                confirm_password: confirmPassword,
+            }),
+        });
+        const json = await res.json();
+        if (json.ok) {
+            showToast('Password changed successfully!');
+            document.getElementById('currentPassword').value = '';
+            document.getElementById('newPasswordInput').value = '';
+            document.getElementById('confirmPasswordInput').value = '';
+            togglePasswordForm();
+        } else {
+            showToast(json.error || 'Error changing password', 'error');
+        }
+    } catch (e) {
+        showToast('Network error', 'error');
+    }
+}
+
 // --- Teacher Management ---
 async function addTeacher(e) {
     e.preventDefault();
