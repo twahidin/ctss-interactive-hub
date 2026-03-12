@@ -787,9 +787,17 @@ async def api_remove_teacher(request: Request):
     if email == teacher.get("email"):
         return JSONResponse({"error": "Cannot remove your own account"}, status_code=400)
 
-    result = await db.teachers.delete_one({"email": email})
-    if result.deleted_count == 0:
+    target = await db.teachers.find_one({"email": email})
+    if not target:
         return JSONResponse({"error": "Teacher not found"}, status_code=404)
+
+    # Reassign their interactives to the admin performing the removal
+    await db.interactives.update_many(
+        {"uploaded_by": target["name"]},
+        {"$set": {"uploaded_by": teacher["name"], "uploaded_by_email": teacher.get("email")}},
+    )
+
+    await db.teachers.delete_one({"email": email})
     return JSONResponse({"ok": True})
 
 
