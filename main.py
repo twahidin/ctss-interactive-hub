@@ -425,8 +425,8 @@ async def invite_registration_page(request: Request, token: str):
     invite = await db.invites.find_one({"token": token})
     if not invite:
         raise HTTPException(status_code=404, detail="Invalid invite link")
-    if invite.get("used"):
-        raise HTTPException(status_code=410, detail="This invite has already been used")
+    if invite.get("use_count", 0) >= invite.get("max_uses", 10):
+        raise HTTPException(status_code=410, detail="This invite link has reached its maximum number of registrations")
     if invite.get("expires_at") and invite["expires_at"].replace(tzinfo=None) < datetime.now(timezone.utc).replace(tzinfo=None):
         raise HTTPException(status_code=410, detail="This invite has expired")
 
@@ -458,8 +458,8 @@ async def invite_register(
         raise HTTPException(status_code=403, detail="Invalid request")
 
     invite = await db.invites.find_one({"token": token})
-    if not invite or invite.get("used"):
-        raise HTTPException(status_code=410, detail="Invalid or used invite")
+    if not invite or invite.get("use_count", 0) >= invite.get("max_uses", 10):
+        raise HTTPException(status_code=410, detail="Invalid or fully used invite")
     if invite.get("expires_at") and invite["expires_at"].replace(tzinfo=None) < datetime.now(timezone.utc).replace(tzinfo=None):
         raise HTTPException(status_code=410, detail="Invite expired")
 
@@ -497,7 +497,10 @@ async def invite_register(
 
     await db.invites.update_one(
         {"token": token},
-        {"$set": {"used": True, "used_by": name, "used_by_email": email, "used_at": datetime.now(timezone.utc)}},
+        {
+            "$inc": {"use_count": 1},
+            "$push": {"registrations": {"name": name, "email": email, "registered_at": datetime.now(timezone.utc)}},
+        },
     )
 
     jwt_token = create_token({"name": name, "role": "teacher", "type": "teacher"}, TEACHER_SESSION_HOURS)
@@ -829,10 +832,9 @@ async def api_create_invite(request: Request):
         "created_at": now,
         "expires_at": now + timedelta(days=7),
         "email_hint": email_hint,
-        "used": False,
-        "used_by": None,
-        "used_by_email": None,
-        "used_at": None,
+        "max_uses": 10,
+        "use_count": 0,
+        "registrations": [],
     })
 
     return JSONResponse({"ok": True, "token": token})

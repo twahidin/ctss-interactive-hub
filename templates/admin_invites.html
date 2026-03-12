@@ -43,7 +43,8 @@
                 <th>Created</th>
                 <th>Email Hint</th>
                 <th>Status</th>
-                <th>Registered As</th>
+                <th>Uses</th>
+                <th>Registered Teachers</th>
                 <th>Link</th>
             </tr>
         </thead>
@@ -53,23 +54,28 @@
                 <td>{{ inv.created_at.strftime('%d %b %Y') }}</td>
                 <td>{{ inv.email_hint or '—' }}</td>
                 <td>
-                    {% if inv.used %}
-                    <span class="subject-tag" style="background:var(--success)">Used</span>
+                    {% if (inv.use_count or 0) >= (inv.max_uses or 10) %}
+                    <span class="subject-tag" style="background:var(--success)">Full</span>
                     {% elif inv.expires_at and inv.expires_at < now %}
                     <span class="subject-tag" style="background:var(--grey-500)">Expired</span>
+                    {% elif (inv.use_count or 0) > 0 %}
+                    <span class="subject-tag" style="background:var(--primary)">Active</span>
                     {% else %}
                     <span class="subject-tag" style="background:var(--warning)">Pending</span>
                     {% endif %}
                 </td>
+                <td>{{ inv.use_count or 0 }} / {{ inv.max_uses or 10 }}</td>
                 <td>
-                    {% if inv.used_by %}
-                    {{ inv.used_by }} ({{ inv.used_by_email or '' }})
+                    {% if inv.registrations %}
+                    {% for reg in inv.registrations %}
+                    <div style="font-size:0.85rem;">{{ reg.name }} ({{ reg.email }})</div>
+                    {% endfor %}
                     {% else %}
                     —
                     {% endif %}
                 </td>
                 <td>
-                    {% if not inv.used and (not inv.expires_at or inv.expires_at >= now) %}
+                    {% if (inv.use_count or 0) < (inv.max_uses or 10) and (not inv.expires_at or inv.expires_at >= now) %}
                     <code style="font-size:0.78rem; color:var(--grey-600);">/join/{{ inv.token[:12] }}...</code>
                     {% else %}
                     —
