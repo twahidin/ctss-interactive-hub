@@ -845,7 +845,7 @@ async def admin_invites_page(request: Request):
         {
             "request": request, "teacher": teacher,
             "invites": invites_list, "csrf_token": csrf,
-            "now": datetime.now(timezone.utc),
+            "now": datetime.utcnow(),
         },
     )
 
