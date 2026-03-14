@@ -878,3 +878,20 @@ async def api_create_invite(request: Request):
     })
 
     return JSONResponse({"ok": True, "token": token})
+
+
+@app.post("/admin/api/delete-invite")
+async def api_delete_invite(request: Request):
+    teacher = await get_current_teacher(request)
+    if not teacher or teacher.get("role") != "admin":
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    data = await request.json()
+    token = data.get("token", "").strip()
+    if not token:
+        return JSONResponse({"error": "Token required"}, status_code=400)
+
+    result = await db.invites.delete_one({"token": token})
+    if result.deleted_count == 0:
+        return JSONResponse({"error": "Invite not found"}, status_code=404)
+    return JSONResponse({"ok": True})

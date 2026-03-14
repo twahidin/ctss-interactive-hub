@@ -46,6 +46,7 @@
                 <th>Uses</th>
                 <th>Registered Teachers</th>
                 <th>Link</th>
+                <th></th>
             </tr>
         </thead>
         <tbody>
@@ -80,6 +81,9 @@
                     {% else %}
                     —
                     {% endif %}
+                </td>
+                <td>
+                    <button class="btn btn-danger btn-sm" onclick="deleteInvite('{{ inv.token }}')">Delete</button>
                 </td>
             </tr>
             {% endfor %}

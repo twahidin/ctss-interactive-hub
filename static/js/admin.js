@@ -274,3 +274,24 @@ function copyInviteLink() {
         navigator.clipboard.writeText(input.value).then(() => showToast('Link copied!'));
     }
 }
+
+async function deleteInvite(token) {
+    if (!confirm('Delete this invite link? This cannot be undone.')) return;
+
+    try {
+        const res = await fetch('/admin/api/delete-invite', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token }),
+        });
+        const json = await res.json();
+        if (json.ok) {
+            showToast('Invite deleted.');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showToast(json.error || 'Error deleting invite', 'error');
+        }
+    } catch (e) {
+        showToast('Network error', 'error');
+    }
+}
