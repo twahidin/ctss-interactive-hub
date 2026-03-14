@@ -839,6 +839,10 @@ async def admin_invites_page(request: Request):
         return RedirectResponse(url="/admin", status_code=303)
 
     invites_list = await db.invites.find().sort("created_at", -1).to_list(length=100)
+    # Strip timezone info so Jinja comparisons don't mix naive/aware datetimes
+    for inv in invites_list:
+        if inv.get("expires_at") and inv["expires_at"].tzinfo is not None:
+            inv["expires_at"] = inv["expires_at"].replace(tzinfo=None)
     csrf = generate_csrf_token(teacher["name"])
     return templates.TemplateResponse(
         "admin_invites.html",
