@@ -564,11 +564,8 @@ async def admin_dashboard(request: Request):
     if not teacher:
         return RedirectResponse(url="/admin", status_code=303)
 
-    # Admin sees all, teachers see only their own
-    if teacher.get("role") == "admin":
-        query = {}
-    else:
-        query = {"uploaded_by": teacher["name"]}
+    # All teachers can view all interactives
+    query = {}
 
     cursor = db.interactives.find(query).sort([("subject", 1), ("title", 1)])
     interactives = await cursor.to_list(length=200)

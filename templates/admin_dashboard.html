@@ -90,6 +90,7 @@
             <tr>
                 <th>Subject</th>
                 <th>Title</th>
+                <th>Owner</th>
                 <th>Passcode</th>
                 <th>Status</th>
                 <th></th>
@@ -102,6 +103,8 @@
                     <span class="subject-tag" style="background:{{ subject_colours.get(item.subject, '#607D8B') }}">{{ item.subject }}</span>
                 </td>
                 <td><strong>{{ item.title }}</strong></td>
+                <td style="font-size:0.85rem; color:var(--grey-600);">{{ item.uploaded_by or '—' }}</td>
+                {% if item.uploaded_by == teacher.name or teacher.role == 'admin' %}
                 <td>
                     <input
                         type="text"
@@ -121,6 +124,13 @@
                     <button class="btn btn-primary btn-sm" onclick="saveRow(this)">Save</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteInteractive(this)">Delete</button>
                 </td>
+                {% else %}
+                <td><span style="font-size:0.85rem; color:var(--grey-500);">{{ item.passcode or 'Open Access' }}</span></td>
+                <td>
+                    <span class="subject-tag" style="background:{{ 'var(--success)' if item.is_active else 'var(--grey-500)' }}">{{ 'Active' if item.is_active else 'Inactive' }}</span>
+                </td>
+                <td></td>
+                {% endif %}
             </tr>
             {% endfor %}
         </tbody>
